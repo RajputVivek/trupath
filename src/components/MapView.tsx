@@ -42,7 +42,7 @@ export default function MapView() {
     })
   }, [location])
 
-  // When destination changes
+  // Destination change
   useEffect(() => {
     if (!destination || !location || !mapRef.current) return
 
@@ -52,8 +52,8 @@ export default function MapView() {
       location,
       { latitude: destination.lat, longitude: destination.lng }
     )
-    setDirectDistance(d)
 
+    setDirectDistance(d)
     drawDirectLine(map, location, destination)
 
     if (mode === "network") {
@@ -64,14 +64,13 @@ export default function MapView() {
     }
   }, [destination, mode])
 
-  // Draw network route
+  // Draw network route with dynamic color
   useEffect(() => {
     if (!route || !mapRef.current || !location) return
     if (!route.coordinates || route.coordinates.length < 2) return
 
     const map = mapRef.current
 
-    // Clear old layers
     if (map.getLayer("network-layer")) map.removeLayer("network-layer")
     if (map.getSource("network")) map.removeSource("network")
     if (map.getLayer("connector-layer")) map.removeLayer("connector-layer")
@@ -79,6 +78,26 @@ export default function MapView() {
 
     const geometry = route.coordinates
     const snappedStart = geometry[0]
+
+    // Calculate efficiency
+    const snappedDirect = getStraightDistance(
+      {
+        latitude: snappedStart[1],
+        longitude: snappedStart[0],
+      },
+      {
+        latitude: geometry[geometry.length - 1][1],
+        longitude: geometry[geometry.length - 1][0],
+      }
+    )
+
+    const efficiency = snappedDirect / route.distance
+
+    let routeColor = "#00ff88"
+
+    if (efficiency >= 0.9) routeColor = "#00ff88" // green
+    else if (efficiency >= 0.6) routeColor = "#ffcc00" // yellow
+    else routeColor = "#ff3b30" // red
 
     // Connector
     map.addSource("connector", {
@@ -107,7 +126,7 @@ export default function MapView() {
       },
     })
 
-    // Route
+    // Network route
     map.addSource("network", {
       type: "geojson",
       data: {
@@ -125,7 +144,7 @@ export default function MapView() {
       type: "line",
       source: "network",
       paint: {
-        "line-color": "#00ff88",
+        "line-color": routeColor,
         "line-width": 4,
       },
     })
@@ -165,7 +184,7 @@ export default function MapView() {
     })
   }
 
-  const efficiency =
+  const efficiencyValue =
     route?.coordinates && route.coordinates.length > 1
       ? (
           getStraightDistance(
@@ -182,6 +201,14 @@ export default function MapView() {
           ) / route.distance
         ).toFixed(2)
       : null
+
+  let insight = ""
+  if (efficiencyValue) {
+    const e = parseFloat(efficiencyValue)
+    if (e >= 0.9) insight = "Highly Direct Route"
+    else if (e >= 0.6) insight = "Moderate Detour"
+    else insight = "Major Barrier Detected"
+  }
 
   return (
     <div style={{ position: "relative", height: "100dvh", width: "100vw" }}>
@@ -223,7 +250,8 @@ export default function MapView() {
           {route?.distance && (
             <div>🚶 Network: {(route.distance / 1000).toFixed(2)} km</div>
           )}
-          {efficiency && <div>📊 Efficiency: {efficiency}</div>}
+          {efficiencyValue && <div>📊 Efficiency: {efficiencyValue}</div>}
+          {insight && <div style={{ marginTop: "6px" }}>🧠 {insight}</div>}
         </div>
       )}
     </div>
