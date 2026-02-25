@@ -39,52 +39,48 @@ export default function MapView() {
     map.on("click", (e) => {
       const dest = { lat: e.lngLat.lat, lng: e.lngLat.lng }
       setDestination(dest)
-
-      const d = getStraightDistance(
-        location,
-        { latitude: dest.lat, longitude: dest.lng }
-      )
-      setDirectDistance(d)
-
-      drawDirectLine(map, location, dest)
-
-      if (mode === "network") {
-        fetchRoute(location, {
-          latitude: dest.lat,
-          longitude: dest.lng,
-        })
-      }
     })
   }, [location])
 
-  // Fetch route when switching mode
+  // When destination changes
   useEffect(() => {
-    if (!destination || !location) return
+    if (!destination || !location || !mapRef.current) return
+
+    const map = mapRef.current
+
+    const d = getStraightDistance(
+      location,
+      { latitude: destination.lat, longitude: destination.lng }
+    )
+    setDirectDistance(d)
+
+    drawDirectLine(map, location, destination)
+
     if (mode === "network") {
       fetchRoute(location, {
         latitude: destination.lat,
         longitude: destination.lng,
       })
     }
-  }, [mode])
+  }, [destination, mode])
 
-  // Draw network route (FULL RESET EACH TIME)
+  // Draw network route
   useEffect(() => {
     if (!route || !mapRef.current || !location) return
     if (!route.coordinates || route.coordinates.length < 2) return
 
     const map = mapRef.current
-    const geometry = route.coordinates
-    const snappedStart = geometry[0]
 
-    // Remove previous layers safely
+    // Clear old layers
     if (map.getLayer("network-layer")) map.removeLayer("network-layer")
     if (map.getSource("network")) map.removeSource("network")
-
     if (map.getLayer("connector-layer")) map.removeLayer("connector-layer")
     if (map.getSource("connector")) map.removeSource("connector")
 
-    // Connector Feature
+    const geometry = route.coordinates
+    const snappedStart = geometry[0]
+
+    // Connector
     map.addSource("connector", {
       type: "geojson",
       data: {
@@ -111,7 +107,7 @@ export default function MapView() {
       },
     })
 
-    // Network Route Feature
+    // Route
     map.addSource("network", {
       type: "geojson",
       data: {
