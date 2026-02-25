@@ -18,7 +18,7 @@ export function useRouting() {
 
     try {
       const response = await axios.post(
-        "https://api.openrouteservice.org/v2/directions/foot-walking",
+        "https://api.openrouteservice.org/v2/directions/foot-walking/geojson",
         {
           coordinates: [
             [start.longitude, start.latitude],
@@ -33,9 +33,9 @@ export function useRouting() {
         }
       )
 
-      const data = response.data.routes[0]
-      const geometry = data.geometry.coordinates
-      const distance = data.summary.distance
+      const feature = response.data.features[0]
+      const geometry = feature.geometry.coordinates
+      const distance = feature.properties.summary.distance
 
       setRoute({
         coordinates: geometry,
@@ -43,6 +43,7 @@ export function useRouting() {
       })
     } catch (err) {
       console.error("Routing error:", err)
+      setRoute(null)
     } finally {
       setLoading(false)
     }
