@@ -13,7 +13,7 @@ export default async function handler(
 
   try {
     const response = await axios.post(
-      'https://api.openrouteservice.org/v2/directions/foot-walking',
+      'https://api.openrouteservice.org/v2/directions/foot-walking/geojson',
       {
         coordinates: [
           [start.longitude, start.latitude],
