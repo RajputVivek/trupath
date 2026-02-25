@@ -19,6 +19,7 @@ export default function MapView() {
     lng: number
   } | null>(null)
 
+  // Initialize map
   useEffect(() => {
     if (!location || mapRef.current) return
 
@@ -26,7 +27,7 @@ export default function MapView() {
       container: mapContainer.current!,
       style: `https://api.maptiler.com/maps/streets/style.json?key=${import.meta.env.VITE_MAPTILER_KEY}`,
       center: [location.longitude, location.latitude],
-      zoom: 15,
+      zoom: 16,
     })
 
     mapRef.current = map
@@ -47,9 +48,17 @@ export default function MapView() {
       setDirectDistance(d)
 
       drawDirectLine(map, location, dest)
+
+      if (mode === "network") {
+        fetchRoute(location, {
+          latitude: dest.lat,
+          longitude: dest.lng,
+        })
+      }
     })
   }, [location])
 
+  // Fetch network route when mode switches
   useEffect(() => {
     if (!destination || !location) return
     if (mode === "network") {
@@ -58,18 +67,60 @@ export default function MapView() {
         longitude: destination.lng,
       })
     }
-  }, [mode, destination])
+  }, [mode])
 
+  // Draw network route + dotted connector
   useEffect(() => {
-    if (!route || !mapRef.current) return
+    if (!route || !mapRef.current || !location) return
 
     const map = mapRef.current
+    const geometry = route.coordinates
 
+    if (!geometry || geometry.length < 2) return
+
+    const snappedStart = geometry[0]
+    const snappedEnd = geometry[geometry.length - 1]
+
+    // Dotted connector from GPS → snapped start
+    const connector = {
+      type: "Feature",
+      geometry: {
+        type: "LineString",
+        coordinates: [
+          [location.longitude, location.latitude],
+          snappedStart,
+        ],
+      },
+    }
+
+    if (map.getSource("connector")) {
+      ;(map.getSource("connector") as maplibregl.GeoJSONSource).setData(
+        connector as any
+      )
+    } else {
+      map.addSource("connector", {
+        type: "geojson",
+        data: connector as any,
+      })
+
+      map.addLayer({
+        id: "connector-layer",
+        type: "line",
+        source: "connector",
+        paint: {
+          "line-color": "#ffffff",
+          "line-width": 2,
+          "line-dasharray": [2, 2],
+        },
+      })
+    }
+
+    // Main green route
     const geojson = {
       type: "Feature",
       geometry: {
         type: "LineString",
-        coordinates: route.coordinates,
+        coordinates: geometry,
       },
     }
 
@@ -133,9 +184,23 @@ export default function MapView() {
     }
   }
 
+  // Correct efficiency calculation using snapped geometry
   const efficiency =
-    directDistance && route?.distance
-      ? (directDistance / route.distance).toFixed(2)
+    route?.coordinates && route.coordinates.length > 1
+      ? (
+          getStraightDistance(
+            {
+              latitude: route.coordinates[0][1],
+              longitude: route.coordinates[0][0],
+            },
+            {
+              latitude:
+                route.coordinates[route.coordinates.length - 1][1],
+              longitude:
+                route.coordinates[route.coordinates.length - 1][0],
+            }
+          ) / route.distance
+        ).toFixed(2)
       : null
 
   return (
