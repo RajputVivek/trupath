@@ -22,10 +22,10 @@ export function useRouting() {
         end,
       })
 
-      const routeData = response.data.routes[0]
+      const feature = response.data.features[0]
 
-      const geometry = routeData.geometry.coordinates
-      const distance = routeData.summary.distance
+      const geometry = feature.geometry.coordinates
+      const distance = feature.properties.summary.distance
 
       setRoute({
         coordinates: geometry,
