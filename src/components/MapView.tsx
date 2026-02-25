@@ -24,7 +24,7 @@ export default function MapView() {
 
     const map = new maplibregl.Map({
       container: mapContainer.current!,
-      style: "https://demotiles.maplibre.org/style.json",
+      style: `https://api.maptiler.com/maps/streets/style.json?key=${import.meta.env.VITE_MAPTILER_KEY}`,
       center: [location.longitude, location.latitude],
       zoom: 15,
     })
