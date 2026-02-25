@@ -58,7 +58,7 @@ export default function MapView() {
     })
   }, [location])
 
-  // Fetch network route when mode switches
+  // Fetch route when switching to network mode
   useEffect(() => {
     if (!destination || !location) return
     if (mode === "network") {
@@ -72,17 +72,14 @@ export default function MapView() {
   // Draw network route + dotted connector
   useEffect(() => {
     if (!route || !mapRef.current || !location) return
+    if (!route.coordinates || route.coordinates.length < 2) return
 
     const map = mapRef.current
     const geometry = route.coordinates
-
-    if (!geometry || geometry.length < 2) return
-
     const snappedStart = geometry[0]
-    const snappedEnd = geometry[geometry.length - 1]
 
-    // Dotted connector from GPS → snapped start
-    const connector = {
+    // Dotted connector: GPS → snapped start
+    const connectorGeoJSON = {
       type: "Feature",
       geometry: {
         type: "LineString",
@@ -95,12 +92,12 @@ export default function MapView() {
 
     if (map.getSource("connector")) {
       ;(map.getSource("connector") as maplibregl.GeoJSONSource).setData(
-        connector as any
+        connectorGeoJSON as any
       )
     } else {
       map.addSource("connector", {
         type: "geojson",
-        data: connector as any,
+        data: connectorGeoJSON as any,
       })
 
       map.addLayer({
@@ -116,7 +113,7 @@ export default function MapView() {
     }
 
     // Main green route
-    const geojson = {
+    const routeGeoJSON = {
       type: "Feature",
       geometry: {
         type: "LineString",
@@ -126,12 +123,12 @@ export default function MapView() {
 
     if (map.getSource("network")) {
       ;(map.getSource("network") as maplibregl.GeoJSONSource).setData(
-        geojson as any
+        routeGeoJSON as any
       )
     } else {
       map.addSource("network", {
         type: "geojson",
-        data: geojson as any,
+        data: routeGeoJSON as any,
       })
 
       map.addLayer({
@@ -184,7 +181,7 @@ export default function MapView() {
     }
   }
 
-  // Correct efficiency calculation using snapped geometry
+  // Efficiency based on snapped route geometry
   const efficiency =
     route?.coordinates && route.coordinates.length > 1
       ? (
