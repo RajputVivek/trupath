@@ -18,12 +18,13 @@ export function useRouting() {
 
     try {
       const response = await axios.post(
-        "https://api.openrouteservice.org/v2/directions/foot-walking/geojson",
+        "https://api.openrouteservice.org/v2/directions/foot-walking",
         {
           coordinates: [
             [start.longitude, start.latitude],
             [end.longitude, end.latitude],
           ],
+          format: "geojson",
         },
         {
           headers: {
