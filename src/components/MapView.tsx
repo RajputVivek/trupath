@@ -139,7 +139,7 @@ export default function MapView() {
       : null
 
   return (
-    <div style={{ position: "relative", height: "100vh", width: "100vw" }}>
+    <div style={{ position: "relative", height: "100dvh", width: "100vw" }}>
       <div ref={mapContainer} style={{ height: "100%", width: "100%" }} />
 
       <div
@@ -150,6 +150,8 @@ export default function MapView() {
           background: "rgba(0,0,0,0.8)",
           padding: "8px",
           borderRadius: "10px",
+          display: "flex",
+          gap: "8px",
         }}
       >
         <button onClick={() => setMode("direct")}>Direct</button>
@@ -160,13 +162,14 @@ export default function MapView() {
         <div
           style={{
             position: "absolute",
-            bottom: 20,
+            bottom: "env(safe-area-inset-bottom, 20px)",
             left: 20,
             right: 20,
-            background: "rgba(0,0,0,0.85)",
+            background: "rgba(0,0,0,0.9)",
             color: "#fff",
             padding: "16px",
             borderRadius: "12px",
+            marginBottom: "20px",
           }}
         >
           {directDistance && (
