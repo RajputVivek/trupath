@@ -19,7 +19,7 @@ export default function MapView() {
     lng: number
   } | null>(null)
 
-  // Initialize map
+  // Initialize Map
   useEffect(() => {
     if (!location || mapRef.current) return
 
@@ -42,7 +42,7 @@ export default function MapView() {
     })
   }, [location])
 
-  // Destination change
+  // Handle destination + mode change
   useEffect(() => {
     if (!destination || !location || !mapRef.current) return
 
@@ -79,7 +79,6 @@ export default function MapView() {
     const geometry = route.coordinates
     const snappedStart = geometry[0]
 
-    // Calculate efficiency
     const snappedDirect = getStraightDistance(
       {
         latitude: snappedStart[1],
@@ -92,12 +91,12 @@ export default function MapView() {
     )
 
     const efficiency = snappedDirect / route.distance
+    const score = Math.max(0, Math.min(100, Math.round(efficiency * 100)))
 
     let routeColor = "#00ff88"
-
-    if (efficiency >= 0.9) routeColor = "#00ff88" // green
-    else if (efficiency >= 0.6) routeColor = "#ffcc00" // yellow
-    else routeColor = "#ff3b30" // red
+    if (score >= 85) routeColor = "#00ff88"
+    else if (score >= 60) routeColor = "#ffcc00"
+    else routeColor = "#ff3b30"
 
     // Connector
     map.addSource("connector", {
@@ -126,7 +125,7 @@ export default function MapView() {
       },
     })
 
-    // Network route
+    // Network Route
     map.addSource("network", {
       type: "geojson",
       data: {
@@ -184,10 +183,11 @@ export default function MapView() {
     })
   }
 
-  const efficiencyValue =
+  // Compute Score & Resistance
+  const walkabilityScore =
     route?.coordinates && route.coordinates.length > 1
-      ? (
-          getStraightDistance(
+      ? Math.round(
+          (getStraightDistance(
             {
               latitude: route.coordinates[0][1],
               longitude: route.coordinates[0][0],
@@ -198,16 +198,18 @@ export default function MapView() {
               longitude:
                 route.coordinates[route.coordinates.length - 1][0],
             }
-          ) / route.distance
-        ).toFixed(2)
+          ) /
+            route.distance) *
+            100
+        )
       : null
 
-  let insight = ""
-  if (efficiencyValue) {
-    const e = parseFloat(efficiencyValue)
-    if (e >= 0.9) insight = "Highly Direct Route"
-    else if (e >= 0.6) insight = "Moderate Detour"
-    else insight = "Major Barrier Detected"
+  let resistance = ""
+  if (walkabilityScore !== null) {
+    if (walkabilityScore >= 85) resistance = "Low Infrastructure Resistance"
+    else if (walkabilityScore >= 60)
+      resistance = "Moderate Infrastructure Resistance"
+    else resistance = "High Infrastructure Resistance"
   }
 
   return (
@@ -237,21 +239,29 @@ export default function MapView() {
             bottom: "env(safe-area-inset-bottom, 20px)",
             left: 20,
             right: 20,
-            background: "rgba(0,0,0,0.9)",
+            background: "rgba(0,0,0,0.92)",
             color: "#fff",
-            padding: "16px",
-            borderRadius: "12px",
+            padding: "18px",
+            borderRadius: "14px",
             marginBottom: "20px",
           }}
         >
           {directDistance && (
-            <div>📏 Direct: {(directDistance / 1000).toFixed(2)} km</div>
+            <div>📏 Geometric Distance: {(directDistance / 1000).toFixed(2)} km</div>
           )}
           {route?.distance && (
-            <div>🚶 Network: {(route.distance / 1000).toFixed(2)} km</div>
+            <div>🚶 Walkable Distance: {(route.distance / 1000).toFixed(2)} km</div>
           )}
-          {efficiencyValue && <div>📊 Efficiency: {efficiencyValue}</div>}
-          {insight && <div style={{ marginTop: "6px" }}>🧠 {insight}</div>}
+          {walkabilityScore !== null && (
+            <>
+              <div style={{ marginTop: "10px", fontSize: "18px", fontWeight: 600 }}>
+                Walkability Score: {walkabilityScore} / 100
+              </div>
+              <div style={{ marginTop: "4px", opacity: 0.8 }}>
+                {resistance}
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>
