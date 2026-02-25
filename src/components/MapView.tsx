@@ -44,7 +44,6 @@ export default function MapView() {
         location,
         { latitude: dest.lat, longitude: dest.lng }
       )
-
       setDirectDistance(d)
 
       drawDirectLine(map, location, dest)
@@ -58,7 +57,7 @@ export default function MapView() {
     })
   }, [location])
 
-  // Fetch route when switching to network mode
+  // Fetch route when switching mode
   useEffect(() => {
     if (!destination || !location) return
     if (mode === "network") {
@@ -69,7 +68,7 @@ export default function MapView() {
     }
   }, [mode])
 
-  // Draw network route + dotted connector
+  // Draw network route (FULL RESET EACH TIME)
   useEffect(() => {
     if (!route || !mapRef.current || !location) return
     if (!route.coordinates || route.coordinates.length < 2) return
@@ -78,69 +77,62 @@ export default function MapView() {
     const geometry = route.coordinates
     const snappedStart = geometry[0]
 
-    // Dotted connector: GPS → snapped start
-    const connectorGeoJSON = {
-      type: "Feature",
-      geometry: {
-        type: "LineString",
-        coordinates: [
-          [location.longitude, location.latitude],
-          snappedStart,
-        ],
-      },
-    }
+    // Remove previous layers safely
+    if (map.getLayer("network-layer")) map.removeLayer("network-layer")
+    if (map.getSource("network")) map.removeSource("network")
 
-    if (map.getSource("connector")) {
-      ;(map.getSource("connector") as maplibregl.GeoJSONSource).setData(
-        connectorGeoJSON as any
-      )
-    } else {
-      map.addSource("connector", {
-        type: "geojson",
-        data: connectorGeoJSON as any,
-      })
+    if (map.getLayer("connector-layer")) map.removeLayer("connector-layer")
+    if (map.getSource("connector")) map.removeSource("connector")
 
-      map.addLayer({
-        id: "connector-layer",
-        type: "line",
-        source: "connector",
-        paint: {
-          "line-color": "#ffffff",
-          "line-width": 2,
-          "line-dasharray": [2, 2],
+    // Connector Feature
+    map.addSource("connector", {
+      type: "geojson",
+      data: {
+        type: "Feature",
+        properties: {},
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [location.longitude, location.latitude],
+            snappedStart,
+          ],
         },
-      })
-    }
-
-    // Main green route
-    const routeGeoJSON = {
-      type: "Feature",
-      geometry: {
-        type: "LineString",
-        coordinates: geometry,
       },
-    }
+    })
 
-    if (map.getSource("network")) {
-      ;(map.getSource("network") as maplibregl.GeoJSONSource).setData(
-        routeGeoJSON as any
-      )
-    } else {
-      map.addSource("network", {
-        type: "geojson",
-        data: routeGeoJSON as any,
-      })
+    map.addLayer({
+      id: "connector-layer",
+      type: "line",
+      source: "connector",
+      paint: {
+        "line-color": "#ffffff",
+        "line-width": 2,
+        "line-dasharray": [2, 2],
+      },
+    })
 
-      map.addLayer({
-        id: "network-layer",
-        type: "line",
-        source: "network",
-        paint: {
-          "line-color": "#00ff88",
-          "line-width": 4,
+    // Network Route Feature
+    map.addSource("network", {
+      type: "geojson",
+      data: {
+        type: "Feature",
+        properties: {},
+        geometry: {
+          type: "LineString",
+          coordinates: geometry,
         },
-      })
-    }
+      },
+    })
+
+    map.addLayer({
+      id: "network-layer",
+      type: "line",
+      source: "network",
+      paint: {
+        "line-color": "#00ff88",
+        "line-width": 4,
+      },
+    })
   }, [route])
 
   function drawDirectLine(
@@ -148,40 +140,35 @@ export default function MapView() {
     start: { latitude: number; longitude: number },
     end: { lat: number; lng: number }
   ) {
-    const lineData = {
-      type: "Feature",
-      geometry: {
-        type: "LineString",
-        coordinates: [
-          [start.longitude, start.latitude],
-          [end.lng, end.lat],
-        ],
-      },
-    }
+    if (map.getLayer("direct-layer")) map.removeLayer("direct-layer")
+    if (map.getSource("direct")) map.removeSource("direct")
 
-    if (map.getSource("direct")) {
-      ;(map.getSource("direct") as maplibregl.GeoJSONSource).setData(
-        lineData as any
-      )
-    } else {
-      map.addSource("direct", {
-        type: "geojson",
-        data: lineData as any,
-      })
-
-      map.addLayer({
-        id: "direct-layer",
-        type: "line",
-        source: "direct",
-        paint: {
-          "line-color": "#ffffff",
-          "line-width": 3,
+    map.addSource("direct", {
+      type: "geojson",
+      data: {
+        type: "Feature",
+        properties: {},
+        geometry: {
+          type: "LineString",
+          coordinates: [
+            [start.longitude, start.latitude],
+            [end.lng, end.lat],
+          ],
         },
-      })
-    }
+      },
+    })
+
+    map.addLayer({
+      id: "direct-layer",
+      type: "line",
+      source: "direct",
+      paint: {
+        "line-color": "#ffffff",
+        "line-width": 3,
+      },
+    })
   }
 
-  // Efficiency based on snapped route geometry
   const efficiency =
     route?.coordinates && route.coordinates.length > 1
       ? (
