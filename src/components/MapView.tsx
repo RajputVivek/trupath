@@ -12,17 +12,26 @@ export default function MapView() {
   const { location } = useGeolocation()
   const { route, fetchRoute } = useRouting()
 
+  const [routingMode, setRoutingMode] =
+    useState<"strict" | "human">("strict")
+
+  const [startMode, setStartMode] =
+    useState<"gps" | "manual">("gps")
+
+  const [manualStart, setManualStart] = useState<{
+    lat: number
+    lng: number
+  } | null>(null)
+
   const [destination, setDestination] = useState<{
     lat: number
     lng: number
   } | null>(null)
 
-  const [directDistance, setDirectDistance] = useState<number | null>(null)
+  const [directDistance, setDirectDistance] =
+    useState<number | null>(null)
 
-  const [routingMode, setRoutingMode] =
-    useState<"strict" | "human">("strict")
-
-  // Initialize Map
+  // Initialize map
   useEffect(() => {
     if (!location || mapRef.current) return
 
@@ -35,47 +44,70 @@ export default function MapView() {
 
     mapRef.current = map
 
-    new maplibregl.Marker({ color: "#00aaff" })
-      .setLngLat([location.longitude, location.latitude])
-      .addTo(map)
-
     map.on("click", (e) => {
-      const dest = { lat: e.lngLat.lat, lng: e.lngLat.lng }
-      setDestination(dest)
-    })
-  }, [location])
+      if (startMode === "manual" && !manualStart) {
+        setManualStart({
+          lat: e.lngLat.lat,
+          lng: e.lngLat.lng,
+        })
+        return
+      }
 
-  // Handle destination change
+      setDestination({
+        lat: e.lngLat.lat,
+        lng: e.lngLat.lng,
+      })
+    })
+  }, [location, startMode, manualStart])
+
+  // Handle routing
   useEffect(() => {
-    if (!destination || !location || !mapRef.current) return
+    if (!destination || !mapRef.current) return
+
+    const start =
+      startMode === "gps"
+        ? location
+        : manualStart
+            ? {
+                latitude: manualStart.lat,
+                longitude: manualStart.lng,
+              }
+            : null
+
+    if (!start) return
 
     const map = mapRef.current
 
-    const d = getStraightDistance(
-      location,
-      { latitude: destination.lat, longitude: destination.lng }
-    )
+    const d = getStraightDistance(start, {
+      latitude: destination.lat,
+      longitude: destination.lng,
+    })
 
     setDirectDistance(d)
 
-    // Draw direct line always
-    drawDirectLine(map, location, destination)
+    drawDirectLine(map, start, destination)
 
-    // Fetch route (Strict or Human)
     fetchRoute(
-      location,
+      start,
       {
         latitude: destination.lat,
         longitude: destination.lng,
       },
       routingMode
     )
-  }, [destination, routingMode])
+  }, [
+    destination,
+    routingMode,
+    startMode,
+    manualStart,
+    location,
+  ])
 
-  // Draw returned route
+  // Draw route
   useEffect(() => {
     if (!route || !mapRef.current) return
-    if (!route.coordinates || route.coordinates.length < 2) return
+    if (!route.coordinates || route.coordinates.length < 2)
+      return
 
     const map = mapRef.current
 
@@ -160,53 +192,54 @@ export default function MapView() {
         style={{ height: "100%", width: "100%" }}
       />
 
-      {/* Mode Toggle */}
+      {/* Controls */}
       <div
         style={{
           position: "absolute",
           top: 20,
           left: 20,
           background: "rgba(0,0,0,0.85)",
-          padding: "10px",
+          padding: "12px",
           borderRadius: "12px",
           display: "flex",
+          flexDirection: "column",
           gap: "8px",
         }}
       >
-        <button
-          onClick={() => setRoutingMode("strict")}
-          style={{
-            background:
-              routingMode === "strict"
-                ? "#ff3b30"
-                : "#333",
-            color: "#fff",
-            padding: "6px 10px",
-            borderRadius: "6px",
-            border: "none",
-          }}
-        >
-          Strict
-        </button>
+        <div>
+          <strong style={{ color: "#fff" }}>
+            Routing Mode
+          </strong>
+          <div>
+            <button onClick={() => setRoutingMode("strict")}>
+              Strict
+            </button>
+            <button onClick={() => setRoutingMode("human")}>
+              Human
+            </button>
+          </div>
+        </div>
 
-        <button
-          onClick={() => setRoutingMode("human")}
-          style={{
-            background:
-              routingMode === "human"
-                ? "#00ff88"
-                : "#333",
-            color: "#000",
-            padding: "6px 10px",
-            borderRadius: "6px",
-            border: "none",
-          }}
-        >
-          Human
-        </button>
+        <div>
+          <strong style={{ color: "#fff" }}>
+            Start Mode
+          </strong>
+          <div>
+            <button onClick={() => setStartMode("gps")}>
+              GPS
+            </button>
+            <button
+              onClick={() => {
+                setManualStart(null)
+                setStartMode("manual")
+              }}
+            >
+              Manual
+            </button>
+          </div>
+        </div>
       </div>
 
-      {/* Info Panel */}
       {(directDistance || route?.distance) && (
         <div
           style={{
