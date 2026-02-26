@@ -1,62 +1,52 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node"
 import axios from "axios"
 
-function calculateDirectnessScore(
-  coordinates: number[][]
-): number {
-  if (coordinates.length < 2) return 0
+function lineIntersectsBBox(
+  line: number[][],
+  bbox: number[]
+): boolean {
+  const [minX, minY, maxX, maxY] = bbox
 
-  const start = coordinates[0]
-  const end = coordinates[coordinates.length - 1]
-
-  const idealVector = [
-    end[0] - start[0],
-    end[1] - start[1],
-  ]
-
-  const idealMagnitude = Math.sqrt(
-    idealVector[0] ** 2 + idealVector[1] ** 2
-  )
-
-  if (idealMagnitude === 0) return 0
-
-  let deviationSum = 0
-
-  for (let i = 1; i < coordinates.length; i++) {
-    const prev = coordinates[i - 1]
-    const curr = coordinates[i]
-
-    const segmentVector = [
-      curr[0] - prev[0],
-      curr[1] - prev[1],
-    ]
-
-    const dot =
-      segmentVector[0] * idealVector[0] +
-      segmentVector[1] * idealVector[1]
-
-    const segmentMagnitude = Math.sqrt(
-      segmentVector[0] ** 2 + segmentVector[1] ** 2
-    )
-
-    if (segmentMagnitude === 0) continue
-
-    const cosTheta =
-      dot / (segmentMagnitude * idealMagnitude)
-
-    const angle = Math.acos(
-      Math.min(1, Math.max(-1, cosTheta))
-    )
-
-    deviationSum += angle
+  for (const coord of line) {
+    if (
+      coord[0] >= minX &&
+      coord[0] <= maxX &&
+      coord[1] >= minY &&
+      coord[1] <= maxY
+    ) {
+      return true
+    }
   }
-
-  return deviationSum
+  return false
 }
 
-type ScoredRoute = {
-  feature: any
-  deviation: number
+async function fetchObstacleBBoxes(
+  start: any,
+  end: any
+) {
+  const bbox = [
+    Math.min(start.longitude, end.longitude),
+    Math.min(start.latitude, end.latitude),
+    Math.max(start.longitude, end.longitude),
+    Math.max(start.latitude, end.latitude),
+  ]
+
+  const query = `
+    [out:json];
+    (
+      way["building"](${bbox[1]},${bbox[0]},${bbox[3]},${bbox[2]});
+      way["natural"="water"](${bbox[1]},${bbox[0]},${bbox[3]},${bbox[2]});
+    );
+    out bb;
+  `
+
+  const response = await axios.post(
+    "https://overpass-api.de/api/interpreter",
+    query,
+    { headers: { "Content-Type": "text/plain" } }
+  )
+
+  return response.data.elements.map((el: any) => el.bounds)
 }
 
 export default async function handler(
@@ -67,20 +57,45 @@ export default async function handler(
     return res.status(405).json({ error: "Method not allowed" })
   }
 
-  const { start, end } = req.body
+  const { start, end, routingMode } = req.body
 
   try {
+    const directLine = [
+      [start.longitude, start.latitude],
+      [end.longitude, end.latitude],
+    ]
+
+    if (routingMode === "human") {
+      const obstacles = await fetchObstacleBBoxes(start, end)
+
+      const blocked = obstacles.some((bbox: number[]) =>
+        lineIntersectsBBox(directLine, bbox)
+      )
+
+      if (!blocked) {
+        return res.status(200).json({
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              properties: {
+                summary: { distance: 0 },
+              },
+              geometry: {
+                type: "LineString",
+                coordinates: directLine,
+              },
+            },
+          ],
+        })
+      }
+    }
+
+    // STRICT MODE or fallback
     const response = await axios.post(
       "https://api.openrouteservice.org/v2/directions/foot-walking/geojson",
       {
-        coordinates: [
-          [start.longitude, start.latitude],
-          [end.longitude, end.latitude],
-        ],
-        alternative_routes: {
-          target_count: 3,
-          weight_factor: 1.4,
-        },
+        coordinates: directLine,
         radiuses: [200, 200],
       },
       {
@@ -91,40 +106,13 @@ export default async function handler(
       }
     )
 
-    const routes = response.data.features
+    return res.status(200).json(response.data)
 
-    if (!routes || routes.length === 0) {
-      return res.status(500).json({ error: "No routes found" })
-    }
-
-    const scoredRoutes: ScoredRoute[] = routes.map(
-      (feature: any) => {
-        const geometry = feature.geometry.coordinates
-        const deviation = calculateDirectnessScore(geometry)
-
-        return {
-          feature,
-          deviation,
-        }
-      }
-    )
-
-    scoredRoutes.sort(
-      (a: ScoredRoute, b: ScoredRoute) =>
-        a.deviation - b.deviation
-    )
-
-    const bestRoute = scoredRoutes[0].feature
-
-    res.status(200).json({
-      type: "FeatureCollection",
-      features: [bestRoute],
-    })
   } catch (error: any) {
-    console.error("ORS ERROR:", error.response?.data || error.message)
-    res.status(500).json({
+    console.error("Routing error:", error.message)
+    return res.status(500).json({
       error: "Routing failed",
-      details: error.response?.data || error.message,
+      details: error.message,
     })
   }
 }

@@ -12,12 +12,15 @@ export default function MapView() {
   const { location } = useGeolocation()
   const { route, fetchRoute } = useRouting()
 
-  const [mode, setMode] = useState<"direct" | "network">("direct")
-  const [directDistance, setDirectDistance] = useState<number | null>(null)
   const [destination, setDestination] = useState<{
     lat: number
     lng: number
   } | null>(null)
+
+  const [directDistance, setDirectDistance] = useState<number | null>(null)
+
+  const [routingMode, setRoutingMode] =
+    useState<"strict" | "human">("strict")
 
   // Initialize Map
   useEffect(() => {
@@ -42,7 +45,7 @@ export default function MapView() {
     })
   }, [location])
 
-  // Handle destination + mode change
+  // Handle destination change
   useEffect(() => {
     if (!destination || !location || !mapRef.current) return
 
@@ -54,78 +57,33 @@ export default function MapView() {
     )
 
     setDirectDistance(d)
+
+    // Draw direct line always
     drawDirectLine(map, location, destination)
 
-    if (mode === "network") {
-      fetchRoute(location, {
+    // Fetch route (Strict or Human)
+    fetchRoute(
+      location,
+      {
         latitude: destination.lat,
         longitude: destination.lng,
-      })
-    }
-  }, [destination, mode])
+      },
+      routingMode
+    )
+  }, [destination, routingMode])
 
-  // Draw network route with dynamic color
+  // Draw returned route
   useEffect(() => {
-    if (!route || !mapRef.current || !location) return
+    if (!route || !mapRef.current) return
     if (!route.coordinates || route.coordinates.length < 2) return
 
     const map = mapRef.current
 
-    if (map.getLayer("network-layer")) map.removeLayer("network-layer")
-    if (map.getSource("network")) map.removeSource("network")
-    if (map.getLayer("connector-layer")) map.removeLayer("connector-layer")
-    if (map.getSource("connector")) map.removeSource("connector")
+    if (map.getLayer("network-layer"))
+      map.removeLayer("network-layer")
+    if (map.getSource("network"))
+      map.removeSource("network")
 
-    const geometry = route.coordinates
-    const snappedStart = geometry[0]
-
-    const snappedDirect = getStraightDistance(
-      {
-        latitude: snappedStart[1],
-        longitude: snappedStart[0],
-      },
-      {
-        latitude: geometry[geometry.length - 1][1],
-        longitude: geometry[geometry.length - 1][0],
-      }
-    )
-
-    const efficiency = snappedDirect / route.distance
-    const score = Math.max(0, Math.min(100, Math.round(efficiency * 100)))
-
-    let routeColor = "#00ff88"
-    if (score >= 85) routeColor = "#00ff88"
-    else if (score >= 60) routeColor = "#ffcc00"
-    else routeColor = "#ff3b30"
-
-    // Connector
-    map.addSource("connector", {
-      type: "geojson",
-      data: {
-        type: "Feature",
-        properties: {},
-        geometry: {
-          type: "LineString",
-          coordinates: [
-            [location.longitude, location.latitude],
-            snappedStart,
-          ],
-        },
-      },
-    })
-
-    map.addLayer({
-      id: "connector-layer",
-      type: "line",
-      source: "connector",
-      paint: {
-        "line-color": "#ffffff",
-        "line-width": 2,
-        "line-dasharray": [2, 2],
-      },
-    })
-
-    // Network Route
     map.addSource("network", {
       type: "geojson",
       data: {
@@ -133,7 +91,7 @@ export default function MapView() {
         properties: {},
         geometry: {
           type: "LineString",
-          coordinates: geometry,
+          coordinates: route.coordinates,
         },
       },
     })
@@ -143,19 +101,24 @@ export default function MapView() {
       type: "line",
       source: "network",
       paint: {
-        "line-color": routeColor,
+        "line-color":
+          routingMode === "human"
+            ? "#00ff88"
+            : "#ff3b30",
         "line-width": 4,
       },
     })
-  }, [route])
+  }, [route, routingMode])
 
   function drawDirectLine(
     map: maplibregl.Map,
     start: { latitude: number; longitude: number },
     end: { lat: number; lng: number }
   ) {
-    if (map.getLayer("direct-layer")) map.removeLayer("direct-layer")
-    if (map.getSource("direct")) map.removeSource("direct")
+    if (map.getLayer("direct-layer"))
+      map.removeLayer("direct-layer")
+    if (map.getSource("direct"))
+      map.removeSource("direct")
 
     map.addSource("direct", {
       type: "geojson",
@@ -178,60 +141,72 @@ export default function MapView() {
       source: "direct",
       paint: {
         "line-color": "#ffffff",
-        "line-width": 3,
+        "line-width": 2,
+        "line-dasharray": [2, 2],
       },
     })
   }
 
-  // Compute Score & Resistance
-  const walkabilityScore =
-    route?.coordinates && route.coordinates.length > 1
-      ? Math.round(
-          (getStraightDistance(
-            {
-              latitude: route.coordinates[0][1],
-              longitude: route.coordinates[0][0],
-            },
-            {
-              latitude:
-                route.coordinates[route.coordinates.length - 1][1],
-              longitude:
-                route.coordinates[route.coordinates.length - 1][0],
-            }
-          ) /
-            route.distance) *
-            100
-        )
-      : null
-
-  let resistance = ""
-  if (walkabilityScore !== null) {
-    if (walkabilityScore >= 85) resistance = "Low Infrastructure Resistance"
-    else if (walkabilityScore >= 60)
-      resistance = "Moderate Infrastructure Resistance"
-    else resistance = "High Infrastructure Resistance"
-  }
-
   return (
-    <div style={{ position: "relative", height: "100dvh", width: "100vw" }}>
-      <div ref={mapContainer} style={{ height: "100%", width: "100%" }} />
+    <div
+      style={{
+        position: "relative",
+        height: "100dvh",
+        width: "100vw",
+      }}
+    >
+      <div
+        ref={mapContainer}
+        style={{ height: "100%", width: "100%" }}
+      />
 
+      {/* Mode Toggle */}
       <div
         style={{
           position: "absolute",
           top: 20,
           left: 20,
-          background: "rgba(0,0,0,0.8)",
-          padding: "8px",
-          borderRadius: "10px",
+          background: "rgba(0,0,0,0.85)",
+          padding: "10px",
+          borderRadius: "12px",
           display: "flex",
           gap: "8px",
         }}
       >
-        <button onClick={() => setMode("direct")}>Direct</button>
-        <button onClick={() => setMode("network")}>Network</button>
+        <button
+          onClick={() => setRoutingMode("strict")}
+          style={{
+            background:
+              routingMode === "strict"
+                ? "#ff3b30"
+                : "#333",
+            color: "#fff",
+            padding: "6px 10px",
+            borderRadius: "6px",
+            border: "none",
+          }}
+        >
+          Strict
+        </button>
+
+        <button
+          onClick={() => setRoutingMode("human")}
+          style={{
+            background:
+              routingMode === "human"
+                ? "#00ff88"
+                : "#333",
+            color: "#000",
+            padding: "6px 10px",
+            borderRadius: "6px",
+            border: "none",
+          }}
+        >
+          Human
+        </button>
       </div>
 
+      {/* Info Panel */}
       {(directDistance || route?.distance) && (
         <div
           style={{
@@ -247,20 +222,16 @@ export default function MapView() {
           }}
         >
           {directDistance && (
-            <div>📏 Geometric Distance: {(directDistance / 1000).toFixed(2)} km</div>
+            <div>
+              📏 Geometric Distance:{" "}
+              {(directDistance / 1000).toFixed(2)} km
+            </div>
           )}
-          {route?.distance && (
-            <div>🚶 Walkable Distance: {(route.distance / 1000).toFixed(2)} km</div>
-          )}
-          {walkabilityScore !== null && (
-            <>
-              <div style={{ marginTop: "10px", fontSize: "18px", fontWeight: 600 }}>
-                Walkability Score: {walkabilityScore} / 100
-              </div>
-              <div style={{ marginTop: "4px", opacity: 0.8 }}>
-                {resistance}
-              </div>
-            </>
+          {route?.distance !== undefined && (
+            <div>
+              🚶 Walkable Distance:{" "}
+              {(route.distance / 1000).toFixed(2)} km
+            </div>
           )}
         </div>
       )}

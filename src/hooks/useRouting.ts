@@ -1,43 +1,33 @@
 import { useState } from "react"
 import axios from "axios"
 
-interface RouteData {
-  coordinates: number[][]
-  distance: number
-}
-
 export function useRouting() {
-  const [route, setRoute] = useState<RouteData | null>(null)
-  const [loading, setLoading] = useState(false)
+  const [route, setRoute] = useState<any>(null)
 
-  const fetchRoute = async (
+  async function fetchRoute(
     start: { latitude: number; longitude: number },
-    end: { latitude: number; longitude: number }
-  ) => {
-    setLoading(true)
-
+    end: { latitude: number; longitude: number },
+    routingMode: "strict" | "human"
+  ) {
     try {
       const response = await axios.post("/api/route", {
         start,
         end,
+        routingMode,
       })
 
       const feature = response.data.features[0]
 
-      const geometry = feature.geometry.coordinates
-      const distance = feature.properties.summary.distance
-
       setRoute({
-        coordinates: geometry,
-        distance,
+        coordinates: feature.geometry.coordinates,
+        distance:
+          feature.properties?.summary?.distance ||
+          0,
       })
     } catch (error) {
       console.error("Routing error:", error)
-      setRoute(null)
-    } finally {
-      setLoading(false)
     }
   }
 
-  return { route, fetchRoute, loading }
+  return { route, fetchRoute }
 }
