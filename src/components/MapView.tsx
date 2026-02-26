@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import maplibregl from "maplibre-gl"
 import "maplibre-gl/dist/maplibre-gl.css"
-import { useGeolocation } from "../hooks/useGeolocation"
 import { getStraightDistance } from "../utils/distance"
 import { useRouting } from "../hooks/useRouting"
 
@@ -12,7 +11,6 @@ export default function MapView() {
   const startMarkerRef = useRef<maplibregl.Marker | null>(null)
   const destMarkerRef = useRef<maplibregl.Marker | null>(null)
 
-  const { location } = useGeolocation()
   const { route, fetchRoute } = useRouting()
 
   const [routingMode, setRoutingMode] =
@@ -31,36 +29,63 @@ export default function MapView() {
   const [directDistance, setDirectDistance] =
     useState<number | null>(null)
 
+  const lastRouteTimeRef = useRef<number>(0)
+
   // Initialize map
   useEffect(() => {
-    if (!location || mapRef.current) return
+    if (mapRef.current) return
 
     const map = new maplibregl.Map({
       container: mapContainer.current!,
       style: `https://api.maptiler.com/maps/streets/style.json?key=${import.meta.env.VITE_MAPTILER_KEY}`,
-      center: [location.longitude, location.latitude],
-      zoom: 16,
+      center: [77.209, 28.6139], // temporary
+      zoom: 15,
     })
 
     mapRef.current = map
 
-    // Default start = GPS
-    setStart({
-      latitude: location.latitude,
-      longitude: location.longitude,
-    })
-
     map.on("click", (e) => {
-      if (!destination) {
-        setDestination({
-          latitude: e.lngLat.lat,
-          longitude: e.lngLat.lng,
-        })
-      }
+      setDestination({
+        latitude: e.lngLat.lat,
+        longitude: e.lngLat.lng,
+      })
     })
-  }, [location])
+  }, [])
 
-  // Start Marker
+  // Live GPS tracking
+  useEffect(() => {
+    if (!navigator.geolocation) return
+
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const newStart = {
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        }
+
+        setStart(newStart)
+
+        if (mapRef.current) {
+          mapRef.current.setCenter([
+            newStart.longitude,
+            newStart.latitude,
+          ])
+        }
+      },
+      (err) => {
+        console.error("GPS error:", err)
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 2000,
+        timeout: 5000,
+      }
+    )
+
+    return () => navigator.geolocation.clearWatch(watchId)
+  }, [])
+
+  // Start marker
   useEffect(() => {
     if (!mapRef.current || !start) return
 
@@ -69,21 +94,9 @@ export default function MapView() {
     if (!startMarkerRef.current) {
       startMarkerRef.current = new maplibregl.Marker({
         color: "#00aaff",
-        draggable: true,
       })
         .setLngLat([start.longitude, start.latitude])
         .addTo(map)
-
-      startMarkerRef.current.on("dragend", () => {
-        const lngLat =
-          startMarkerRef.current?.getLngLat()
-        if (!lngLat) return
-
-        setStart({
-          latitude: lngLat.lat,
-          longitude: lngLat.lng,
-        })
-      })
     } else {
       startMarkerRef.current.setLngLat([
         start.longitude,
@@ -92,7 +105,7 @@ export default function MapView() {
     }
   }, [start])
 
-  // Destination Marker
+  // Destination marker
   useEffect(() => {
     if (!mapRef.current || !destination) return
 
@@ -127,10 +140,18 @@ export default function MapView() {
     }
   }, [destination])
 
-  // Route calculation
+  // Recalculate route intelligently
   useEffect(() => {
     if (!start || !destination || !mapRef.current)
       return
+
+    const now = Date.now()
+
+    // Throttle routing (avoid API spam)
+    if (now - lastRouteTimeRef.current < 3000)
+      return
+
+    lastRouteTimeRef.current = now
 
     const map = mapRef.current
 
@@ -261,15 +282,13 @@ export default function MapView() {
         <div
           style={{
             position: "absolute",
-            bottom:
-              "env(safe-area-inset-bottom, 20px)",
+            bottom: 20,
             left: 20,
             right: 20,
             background: "rgba(0,0,0,0.92)",
             color: "#fff",
             padding: "18px",
             borderRadius: "14px",
-            marginBottom: "20px",
           }}
         >
           {directDistance && (
